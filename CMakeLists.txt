@@ -3,4 +3,4 @@ project(LegoImageProcessing)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(LegoImageProcessing main.cpp)
+add_executable(LegoImageProcessing main.cpp lib/stb_image.h Color.h lib/stb_image_write.h)
