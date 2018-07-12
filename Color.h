@@ -5,20 +5,98 @@
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>
+#include "Data.h"
 
 #ifndef LEGOIMAGEPROCESSING_COLOR_H
 #define LEGOIMAGEPROCESSING_COLOR_H
 
-typedef unsigned char PixelRGB;
-
-struct PixelHSV {
-    float h; // 0 - 360
-    float s; // 0 - 1
-    float v; // 0 - 1
-};
-
 class Color {
 public:
+
+    static std::vector<CalibrationResult> calibrate(const std::vector<ColorClass>& colors, const Image& image, int row) {
+        std::vector<CalibrationResult> results;
+
+
+        return results;
+    }
+
+    static ColorClass classify(const PixelHSV& color) {
+        // TODO: move values to config file
+
+        PixelHSV blackMin = {0, 0, 0};
+        PixelHSV blackMax = {360, 1, 0.2};
+
+        PixelHSV brownMin = {0, 0.2, 0.1};
+        PixelHSV brownMax = {30, 0.9, 0.6};
+
+        PixelHSV cyanMin = {170, 0.4, 0.2};
+        PixelHSV cyanMax = {200, 1, 1};
+
+        PixelHSV darkGreyMin = {0, 0, 0.10};
+        PixelHSV darkGreyMax = {360, 0.25, 0.5};
+
+        PixelHSV darkBlueMin = {190, 0.4, 0.3};
+        PixelHSV darkBlueMax = {230, 1, 1};
+
+        PixelHSV greenMin = {120, 0.4, 0.2};
+        PixelHSV greenMax = {170, 1, 1};
+
+        PixelHSV greyBoardMin = {0, 0, 0.2};
+        PixelHSV greyBoardMax = {360, 0.25, 0.8};
+
+        PixelHSV pinkMin = {310, 0.15, 0.5};
+        PixelHSV pinkMax = {350, 0.41, 1};
+
+        PixelHSV purpleMin = {240, 0.2, 0.2};
+        PixelHSV purpleMax = {270, 0.8, 0.8};
+
+        PixelHSV redMin = {210, 0.5, 0.5};
+        PixelHSV redMax = {20, 1, 1};
+
+        PixelHSV whiteMin = {0, 0, 0.7};
+        PixelHSV whiteMax = {360, 1, 1};
+
+        if (inRange(color, blackMin, blackMax)) {
+            return ColorClass::Black;
+        }
+        if (inRange(color, brownMin, brownMax)) {
+            return ColorClass::Brown;
+        }
+        if (inRange(color, cyanMin, cyanMax)) {
+            return ColorClass::Cyan;
+        }
+        if (inRange(color, darkGreyMin, darkGreyMax)) {
+            return ColorClass::DarkGrey;
+        }
+        if (inRange(color, darkBlueMin, darkBlueMax)) {
+            return ColorClass::DarkBlue;
+        }
+        if (inRange(color, greenMin, greenMax)) {
+            return ColorClass::Green;
+        }
+        if (inRange(color, greyBoardMin, greyBoardMax)) {
+            return ColorClass::GreyBoard;
+        }
+        if (inRange(color, pinkMin, pinkMax)) {
+            return ColorClass::Pink;
+        }
+        if (inRange(color, purpleMin, purpleMax)) {
+            return ColorClass::Purple;
+        }
+        if (inRange(color, redMin, redMax)) {
+            return ColorClass::Red;
+        }
+        if (inRange(color, whiteMin, whiteMax)) {
+            return ColorClass::White;
+        }
+        return ColorClass::Unknown;
+    }
+
+    static bool inRange(const PixelHSV& val, const PixelHSV& min, const PixelHSV& max) {
+        return (max.h >= min.h ? ( val.h >= min.h && val.h <= max.h) : ( val.h >= min.h || val.h <= max.h))
+               && (val.s >= min.s && val.s <= max.s) && (val.v >= min.v && val.v <= max.v);
+    }
+
     static PixelHSV toHSV(int r, int g, int b) {
         float fR = r / 255.f;
         float fG = g / 255.f;
@@ -59,7 +137,7 @@ public:
         return {fH, fS, fV};
     }
 
-    static void toRGB(PixelHSV pixel, PixelRGB &r, PixelRGB &g, PixelRGB &b) {
+    static void toRGB(const PixelHSV& pixel, PixelRGB &r, PixelRGB &g, PixelRGB &b) {
         float fC = pixel.v * pixel.s; // Chroma
         float fHPrime = fmod(pixel.h / 60.0, 6);
         float fX = fC * (1 - fabs(fmod(fHPrime, 2) - 1));
