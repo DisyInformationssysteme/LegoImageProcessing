@@ -13,14 +13,66 @@
 class Color {
 public:
 
-    static std::vector<CalibrationResult> calibrate(const std::vector<ColorClass>& colors, const Image& image, int row) {
+    static std::vector<CalibrationResult>
+    calibrate(const std::vector<ColorClass> &colors, const Image &image, int row, int blockWidth, int minX, int maxX) {
+        int windowWidth = blockWidth * colors.size();
         std::vector<CalibrationResult> results;
 
+        CalibrationResult lastResult;
+        lastResult.row = row;
+        float lastScore;
+        int endX = std::min(maxX, image.width - windowWidth);
+        int stepWidth = (endX - minX) <= blockWidth ? 1 :  blockWidth / 4;
+        for (int startX = minX; startX < endX; startX += stepWidth) {
+            std::vector<int> matches(colors.size());
+            float score = matchColorWindow(colors, image, row, blockWidth, matches, startX);
+            int distanceToLast = startX - lastResult.start;
+            if (score > lastScore) {
+                if (lastResult.start >= 0 && distanceToLast < blockWidth) {
+                    results.back().start = startX;
+                    results.back().end = startX + windowWidth;
+                    results.back().score = score;
+                } else {
+                    lastResult.start = startX;
+                    lastResult.end = startX + windowWidth;
+                    lastResult.score = score;
+                    results.push_back(lastResult);
+                }
+            } else if (lastResult.start >= 0 && distanceToLast > blockWidth && distanceToLast < windowWidth) {
+                startX += windowWidth;
+            }
+            lastScore = score;
+        }
 
         return results;
     }
 
-    static ColorClass classify(const PixelHSV& color) {
+    static float matchColorWindow(const std::vector<ColorClass> &colors, const Image &image, int row, int blockWidth,
+                                  std::vector<int> &matches, int startX) {
+        float threshold = 0.5;
+        float matchScore = 0;
+        for (int i = 0; i < colors.size(); i++) {
+            auto &requiredColor = colors[i];
+            for (int offset = 0; offset < blockWidth; offset++) {
+                int x = startX + offset + i * blockWidth;
+                auto pixelColors = classify(image.getPixel(x, row));
+                for (auto &pixelColor : pixelColors) {
+                    if (pixelColor == requiredColor) {
+                        matches[i]++;
+                    }
+                }
+            }
+            float score = matches[i] / (float) blockWidth;
+            if (score < threshold) {
+                return 0;
+            }
+            matchScore += score;
+        }
+        return matchScore / colors.size();
+    }
+
+
+    static std::vector<ColorClass> classify(const PixelHSV &color) {
         // TODO: move values to config file
 
         PixelHSV blackMin = {0, 0, 0};
@@ -54,46 +106,48 @@ public:
         PixelHSV redMax = {20, 1, 1};
 
         PixelHSV whiteMin = {0, 0, 0.7};
-        PixelHSV whiteMax = {360, 1, 1};
+        PixelHSV whiteMax = {360, 0.2, 1};
 
+        std::vector<ColorClass> classes;
         if (inRange(color, blackMin, blackMax)) {
-            return ColorClass::Black;
+            classes.push_back(ColorClass::Black);
         }
         if (inRange(color, brownMin, brownMax)) {
-            return ColorClass::Brown;
+            classes.push_back(ColorClass::Brown);
         }
         if (inRange(color, cyanMin, cyanMax)) {
-            return ColorClass::Cyan;
+            classes.push_back(ColorClass::Cyan);
         }
         if (inRange(color, darkGreyMin, darkGreyMax)) {
-            return ColorClass::DarkGrey;
+            classes.push_back(ColorClass::DarkGrey);
         }
         if (inRange(color, darkBlueMin, darkBlueMax)) {
-            return ColorClass::DarkBlue;
+            classes.push_back(ColorClass::DarkBlue);
         }
         if (inRange(color, greenMin, greenMax)) {
-            return ColorClass::Green;
+            classes.push_back(ColorClass::Green);
         }
         if (inRange(color, greyBoardMin, greyBoardMax)) {
-            return ColorClass::GreyBoard;
+            classes.push_back(ColorClass::GreyBoard);
         }
         if (inRange(color, pinkMin, pinkMax)) {
-            return ColorClass::Pink;
+            classes.push_back(ColorClass::Pink);
         }
         if (inRange(color, purpleMin, purpleMax)) {
-            return ColorClass::Purple;
+            classes.push_back(ColorClass::Purple);
         }
         if (inRange(color, redMin, redMax)) {
-            return ColorClass::Red;
+            classes.push_back(ColorClass::Red);
         }
         if (inRange(color, whiteMin, whiteMax)) {
-            return ColorClass::White;
+            classes.push_back(ColorClass::White);
         }
-        return ColorClass::Unknown;
+
+        return classes;
     }
 
-    static bool inRange(const PixelHSV& val, const PixelHSV& min, const PixelHSV& max) {
-        return (max.h >= min.h ? ( val.h >= min.h && val.h <= max.h) : ( val.h >= min.h || val.h <= max.h))
+    static bool inRange(const PixelHSV &val, const PixelHSV &min, const PixelHSV &max) {
+        return (max.h >= min.h ? (val.h >= min.h && val.h <= max.h) : (val.h >= min.h || val.h <= max.h))
                && (val.s >= min.s && val.s <= max.s) && (val.v >= min.v && val.v <= max.v);
     }
 
@@ -137,7 +191,7 @@ public:
         return {fH, fS, fV};
     }
 
-    static void toRGB(const PixelHSV& pixel, PixelRGB &r, PixelRGB &g, PixelRGB &b) {
+    static void toRGB(const PixelHSV &pixel, PixelRGB &r, PixelRGB &g, PixelRGB &b) {
         float fC = pixel.v * pixel.s; // Chroma
         float fHPrime = fmod(pixel.h / 60.0, 6);
         float fX = fC * (1 - fabs(fmod(fHPrime, 2) - 1));

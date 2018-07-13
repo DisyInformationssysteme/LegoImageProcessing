@@ -2,6 +2,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include <iostream>
+#include <map>
 #include "lib/stb_image.h"
 #include "lib/stb_image_write.h"
 #include "Data.h"
@@ -14,8 +15,9 @@ int main() {
     vector<ColorClass> calibrationColors = {ColorClass::DarkBlue, ColorClass::Purple, ColorClass::Cyan,
                                             ColorClass::Green, ColorClass::DarkGrey, ColorClass::White,
                                             ColorClass::Pink, ColorClass::Black, ColorClass::Red, ColorClass::Brown};
-    char const* inFileName = "/home/galetzka/dev/LegoImageProcessing/test/02_extract.jpg";
-    char const* outFileName = "/home/galetzka/dev/LegoImageProcessing/test/02_out.bmp";
+    char const *inFileName = "/home/galetzka/dev/LegoImageProcessing/test/extract7.jpg";
+    char const *inMaskName = "/home/galetzka/dev/LegoImageProcessing/mask_greyscale.png";
+    char const *outFileName = "/home/galetzka/dev/LegoImageProcessing/test/out.bmp";
     int width, height, channels;
     cout << "Reading image..." << endl;
     PixelRGB *data = stbi_load(inFileName, &width, &height, &channels, 3);
@@ -24,8 +26,7 @@ int main() {
         cout << "No file found / error processing image" << endl;
         return -1;
     }
-    cout << "Width: " << width << ", Height: " << height << ", Channels: " << channels << endl;
-
+    cout << "  Width: " << width << ", Height: " << height << ", Channels: " << channels << endl;
 
     cout << "Converting to HSV..." << endl;
     vector<PixelHSV> hsvData(pixelCount);
@@ -37,7 +38,12 @@ int main() {
     }
     Image image = {width, height, hsvData};
 
-    cout << "Moving window calibration..." << endl;
+    cout << "Reading mask..." << endl;
+    int maskWidth, maskHeight, maskChannels;
+    PixelRGB* maskData = stbi_load(inMaskName, &maskWidth, &maskHeight, &maskChannels, 1);
+    cout << "  Width: " << maskWidth << ", Height: " << maskHeight << ", Channels: " << maskChannels << endl;
+
+/*
     for (int windowSize = 50; windowSize < 300; windowSize += 50) {
         for (int wX = 0; wX < (width - 1) / windowSize; wX++) {
             for (int wY = 0; wY < (height - 1) / windowSize; wY++) {
@@ -51,46 +57,128 @@ int main() {
 
     for (int i = 0; i < pixelCount; i++) {
         auto pixelClass = Color::classify(image.data[i]);
-        if (pixelClass == ColorClass::Cyan) {
-            image.data[i] = {0, 1, 1};
-        } else if (pixelClass == ColorClass::DarkBlue) {
-            image.data[i] = {30, 1, 1};
-        } else if (pixelClass == ColorClass::GreyBoard) {
-            image.data[i] = {60, 1, 1};
-        } else if (pixelClass == ColorClass::Purple) {
-            image.data[i] = {90, 1, 1};
-        } else if (pixelClass == ColorClass::Green) {
-            image.data[i] = {120, 1, 1};
-        } else if (pixelClass == ColorClass::DarkGrey) {
-            image.data[i] = {150, 1, 1};
-        } else if (pixelClass == ColorClass::Black) {
-            image.data[i] = {180, 1, 1};
-        } else if (pixelClass == ColorClass::White) {
-            image.data[i] = {210, 1, 1};
-        } else if (pixelClass == ColorClass::Red) {
-            image.data[i] = {240, 1, 1};
-        } else if (pixelClass == ColorClass::Pink) {
-            image.data[i] = {270, 1, 1};
-        } else if (pixelClass == ColorClass::Brown) {
-            image.data[i] = {300, 1, 1};
-        } else if (pixelClass == ColorClass::Unknown) {
-            image.data[i] = {0, 0, 0};
-        } else {
-            throw "Unknown Color!";
+        if (pixelClass.size() == 0) {
+            continue;
         }
-    }
-
-/*
-    CalibrationResult result;
-    for (int row = 0; row < image.height; row++) {
-        std::vector<CalibrationResult> results = Color::calibrate(calibrationColors, image, row);
-        if (results.size() > 0) {
-            for (int x = 0; x < 10; x++) {
-                image.setPixel(x, row, {0, 1, 1});
-            }
+        if (pixelClass[0] == ColorClass::Cyan) {
+            image.data[i] = {0, 1, 1};
+        } else if (pixelClass[0] == ColorClass::DarkBlue) {
+            image.data[i] = {30, 1, 1};
+        } else if (pixelClass[0] == ColorClass::GreyBoard) {
+            image.data[i] = {60, 1, 1};
+        } else if (pixelClass[0] == ColorClass::Purple) {
+            image.data[i] = {90, 1, 1};
+        } else if (pixelClass[0] == ColorClass::Green) {
+            image.data[i] = {120, 1, 1};
+        } else if (pixelClass[0] == ColorClass::DarkGrey) {
+            image.data[i] = {330, 1, 1};
+        } else if (pixelClass[0] == ColorClass::Black) {
+            image.data[i] = {180, 1, 1};
+        } else if (pixelClass[0] == ColorClass::White) {
+            image.data[i] = {210, 1, 1};
+        } else if (pixelClass[0] == ColorClass::Red) {
+            image.data[i] = {240, 1, 1};
+        } else if (pixelClass[0] == ColorClass::Pink) {
+            image.data[i] = {270, 1, 1};
+        } else if (pixelClass[0] == ColorClass::Brown) {
+            image.data[i] = {300, 1, 1};
         }
     }
 */
+
+
+    int cellBlockWidth = 24;
+    int cellBlockHeight = 23;
+    float blockWidth = 33.2;
+    int lastMatchedRow = -1;
+    map<BoardCell, float> foundStrips;
+
+    cout << "Finding calibration strips..." << endl;
+    for (int row = 0; row < image.height; row += blockWidth / 4) {
+        std::vector<CalibrationResult> calibrations = Color::calibrate(calibrationColors, image, row, blockWidth, 0, image.width);
+        int rowDistance = row - lastMatchedRow;
+        if (!calibrations.empty()) {
+            for (auto &calibration : calibrations) {
+                int cellColumn = calibration.start / (cellBlockWidth * blockWidth);
+                int cellRow = row / (cellBlockHeight * blockWidth);
+                BoardCell cell(cellColumn, cellRow, calibration);
+
+                auto iter = foundStrips.find(cell);
+                if (iter == foundStrips.end()) {
+                    foundStrips[cell] = calibration.score;
+                } else if (iter->second < calibration.score) {
+                    foundStrips.erase(iter);
+                    foundStrips[cell] = calibration.score;
+                }
+            }
+            lastMatchedRow = row;
+        } else if (lastMatchedRow > 0 && rowDistance > blockWidth && rowDistance < blockWidth * 4) {
+            // optimization to jump ahead a lot if we found a strip a few pixels back
+            row += blockWidth * 20;
+        }
+    }
+
+    for (const auto& strip : foundStrips) {
+        auto calibration = strip.first.calibration;
+        //TODO: fine-tune calibration
+        cout << "   Found strip pixel (" << calibration.start << "-" << calibration.end << ", " << calibration.row << ")" << endl;
+
+        // searching for upper bound of strip
+        vector<ColorClass> startColor;
+        startColor.push_back(calibrationColors.front());
+        CalibrationResult upperBound;
+        for (int i = -blockWidth; i < blockWidth; i++) {
+            int row = calibration.row + i;
+            if (row < 0 || row >= image.height) {
+                continue;
+            }
+            std::vector<CalibrationResult> calibrations = Color::calibrate(startColor, image, row, blockWidth, calibration.start,
+                                                                           calibration.start + 1);
+            if (!calibrations.empty()) {
+                upperBound = calibrations.front();
+                break;
+            }
+        }
+        for (int x = upperBound.start; x < upperBound.end; x++) {
+            image.setPixel(x, upperBound.row - 1, {0, 1, 1});
+            image.setPixel(x, upperBound.row, {0, 1, 1});
+            image.setPixel(x, upperBound.row + 1, {0, 1, 1});
+        }
+
+        int startX = upperBound.start - blockWidth * 2.5;
+        int startY = upperBound.row;
+        for (int col = 0; col < cellBlockWidth * 2 - 1; col++) {
+            for (int row = 0; row < cellBlockHeight * 2 - 1; row++) {
+                PixelXY upperLeft = {startX + col * blockWidth / 2, startY + row * blockWidth / 2};
+                PixelXY lowerRight = {upperLeft.x + blockWidth / 2, upperLeft.y + blockWidth / 2};
+
+                int maskOffsetX = cellBlockWidth * 2;
+                int maskOffsetY = strip.first.row * cellBlockHeight * 2;
+                auto maskValue = maskData[maskOffsetX + col + (row + maskOffsetY) * maskWidth];
+                if (maskValue == 0) {
+                    Draw::fillRectangle(image, upperLeft, lowerRight, {0, 0, 0});
+                    continue;
+                }
+                map<ColorClass, int> colorCount;
+                for (int y = upperLeft.y; y <= lowerRight.y; y++) {
+                    for (int x = upperLeft.x; x <= lowerRight.x; x++) {
+                        for (auto& colorClass : Color::classify(image.getPixel(x, y))) {
+                            colorCount[colorClass]++;
+                        }
+                    }
+                }
+                pair<ColorClass , int> bestResult = *colorCount.begin();
+                for (auto pair: colorCount) {
+                    if (pair.second > bestResult.second) {
+                        bestResult = pair;
+                    }
+                }
+                Draw::fillRectangle(image, upperLeft, lowerRight, bestResult.first);
+            }
+        }
+
+    }
+
 
     cout << "Converting to RGB..." << endl;
     for (int i = 0; i < pixelCount; i++) {
@@ -102,7 +190,7 @@ int main() {
     }
 
     cout << "Writing output..." << endl;
-    stbi_write_bmp(outFileName, width, height, 3, data);
+    stbi_write_bmp(outFileName, image.width, image.height, 3, data);
 
     cout << "Done!" << endl;
 
